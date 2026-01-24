@@ -5,7 +5,7 @@ set_languages("c++20")
 
 add_rules("mode.debug", "mode.release")
 
-add_repositories("local-repo build")
+-- add_repositories("local-repo build")
 
 add_requires("gtest")
 add_requires("asio")

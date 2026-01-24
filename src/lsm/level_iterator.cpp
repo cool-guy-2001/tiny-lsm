@@ -157,6 +157,9 @@ bool Level_Iterator::operator==(const BaseIterator &other) const {
 bool Level_Iterator::operator!=(const BaseIterator &other) const {
   return !(*this == other);
 }
+// bool Level_Iterator::operator!=(const Level_Iterator &other) const {
+//   return !(*this == other);
+// }
 
 BaseIterator::value_type Level_Iterator::operator*() const {
   if (!cached_value.has_value()) {
