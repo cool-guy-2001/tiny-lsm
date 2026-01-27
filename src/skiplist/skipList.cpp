@@ -1,4 +1,5 @@
 #include "../../include/skiplist/skiplist.h"
+#include "iterator/iterator.h"
 #include <cstdint>
 #include <iostream>
 #include <memory>
@@ -10,34 +11,53 @@
 namespace tiny_lsm {
 
 // ************************ SkipListIterator ************************
+
+//SkipListIterator就是"跳表版本"的迭代器，把"怎么从一个SkipListNode走到下一个节点"封装起来
+
+//BaseIterator里将这些函数定义为虚函数,查看iterator.h
 BaseIterator &SkipListIterator::operator++() {
   // TODO: Lab1.2 任务：实现SkipListIterator的++操作符
+  if(is_end())
+    return *this;
+  current=current->forward_[0];
   return *this;
 }
 
 bool SkipListIterator::operator==(const BaseIterator &other) const {
+
   // TODO: Lab1.2 任务：实现SkipListIterator的==操作符
-  return true;
+
+  //other是基类BaseIterator的引用，没有current,只有把它转回子类SkipListIterator才能访问成员current
+  //c++中基类引用->子类引用的安全方式是:dynamic_cast
+  auto p=dynamic_cast<const SkipListIterator*>(&other);
+  //p指向other本身，只不过类型从BaseIterator*变成了SkipListIterator*
+  if(p==nullptr)  //cast失败，ohter是别的子类对象，如(SstIterator),但用SkipListIterator去cast它
+    return false;
+  return this->current==p->current;
 }
 
 bool SkipListIterator::operator!=(const BaseIterator &other) const {
   // TODO: Lab1.2 任务：实现SkipListIterator的!=操作符
-  return true;
+  return !(*this==other);
 }
 
 SkipListIterator::value_type SkipListIterator::operator*() const {
   // TODO: Lab1.2 任务：实现SkipListIterator的*操作符
+  if(is_valid()){
+    return {current->key_,current->value_};
+  }
   return {"", ""};
 }
 
 IteratorType SkipListIterator::get_type() const {
   // TODO: Lab1.2 任务：实现SkipListIterator的get_type
   // ? 主要是为了熟悉基类的定义和继承关系
-  return IteratorType::Undefined;
+  return IteratorType::SkipListIterator;
 }
 
 bool SkipListIterator::is_valid() const {
-  return current && !current->key_.empty();
+  //return current && !current->key_.empty(); 如果是空key的话，key_.empty()会出错
+  return current!=nullptr;
 }
 bool SkipListIterator::is_end() const { return current == nullptr; }
 

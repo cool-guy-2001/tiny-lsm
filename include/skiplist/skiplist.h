@@ -72,6 +72,8 @@ public:
   // 空迭代器构造函数
   SkipListIterator() : current(nullptr), lock(nullptr) {}
 
+  //TODO:override(重写),BaseIterator的子类SkipListIterator提供具体实现
+
   virtual BaseIterator &operator++() override;
   virtual bool operator==(const BaseIterator &other) const override;
   virtual bool operator!=(const BaseIterator &other) const override;
@@ -84,7 +86,7 @@ public:
   uint64_t get_tranc_id() const override;
 
 private:
-  std::shared_ptr<SkipListNode> current;
+  std::shared_ptr<SkipListNode> current; //迭代器当前指向哪个节点,SkipListIterator核心成员.
   std::shared_ptr<std::shared_lock<std::shared_mutex>>
       lock; // 持有读锁, 整个迭代器有效期间都持有读锁
 };
