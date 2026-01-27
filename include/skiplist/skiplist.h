@@ -27,8 +27,8 @@ struct SkipListNode {
       backward_; // 指向不同层级的下一个节点的指针数组
   SkipListNode(const std::string &k, const std::string &v, int level,
                uint64_t tranc_id)
-      : key_(k), value_(v), forward_(level, nullptr),
-        backward_(level, std::weak_ptr<SkipListNode>()), tranc_id_(tranc_id) {}
+      : key_(k), value_(v), tranc_id_(tranc_id), forward_(level, nullptr),
+        backward_(level) {}
   void set_backward(int level, std::shared_ptr<SkipListNode> node) {
     backward_[level] = std::weak_ptr<SkipListNode>(node);
   }
@@ -94,9 +94,9 @@ private:
 class SkipList {
 private:
   std::shared_ptr<SkipListNode>
-      head;              // 跳表的头节点，不存储实际数据，用于遍历跳表
-  int max_level;         // 跳表的最大层级数，限制跳表的高度
-  int current_level;     // 跳表当前的实际层级数，动态变化
+      head; // 跳表的头节点，不存储实际数据，用于遍历跳表
+  int max_level;     // 跳表的最大层级数，限制跳表的高度
+  int current_level; // 跳表当前的实际层级数，动态变化
   size_t size_bytes = 0; // 跳表当前占用的内存大小（字节数），用于跟踪内存使用
   // std::shared_mutex rw_mutex; // ! 目前看起来这个锁是冗余的, 在上层控制即可,
   // 后续考虑是否需要细粒度的锁

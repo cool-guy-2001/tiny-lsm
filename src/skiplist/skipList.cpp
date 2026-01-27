@@ -1,8 +1,9 @@
 #include "../../include/skiplist/skiplist.h"
 #include <cstdint>
 #include <iostream>
+#include <memory>
 #include <spdlog/spdlog.h>
-#include <stdexcept>  
+#include <stdexcept>
 #include <tuple>
 #include <utility>
 
@@ -59,7 +60,11 @@ int SkipList::random_level() {
   // ? - 确保层数分布为：第1层100%，第2层50%，第3层25%，以此类推
   // ? - 层数范围限制在[1, max_level]之间，避免浪费内存
   // TODO: Lab1.1 任务：插入时随机为这一次操作确定其最高连接的链表层数
-  return 0;
+  int level = 1;
+  while (level < max_level && dis_01(gen) != 0) {
+    level++;
+  }
+  return level;
 }
 
 // 插入或更新键值对
@@ -70,7 +75,38 @@ void SkipList::put(const std::string &key, const std::string &value,
   // TODO: Lab1.1  任务：实现插入或更新键值对
   // ? Hint: 你需要保证不同`Level`的步长从底层到高层逐渐增加
   // ? 你可能需要使用到`random_level`函数以确定层数, 其注释中为你提供一种思路
-  // ? tranc_id 为事务id, 现在你不需要关注它, 直接将其传递到 SkipListNode 的构造函数中即可
+  // ? tranc_id 为事务id, 现在你不需要关注它, 直接将其传递到
+  // SkipListNode的构造函数中即可
+
+  std::vector<std::shared_ptr<SkipListNode>> pre(
+      max_level); //每层插入位置的前驱节点
+  std::shared_ptr<SkipListNode> p;
+  p = head;
+  for (int i = current_level - 1; i >= 0; i--) {
+    while (p->forward_[i] != nullptr && p->forward_[i]->key_ < key) {
+      p = p->forward_[i];
+    }
+    pre[i] = p;
+  }
+  p = p->forward_[0];
+  if (p != nullptr && p->key_ == key) {
+    p->value_ = value;
+  } else {
+    int new_level = random_level();
+    std::shared_ptr<SkipListNode> new_node;
+    new_node = std::make_shared<SkipListNode>(key, value, new_level, tranc_id);
+
+    if (new_level > current_level) {
+      for (int i = current_level; i < new_level; i++) {
+        pre[i] = head;
+      }
+      current_level=new_level;
+    }
+    for (int i = 0; i < new_level; i++) {
+      new_node->forward_[i] = pre[i]->forward_[i];
+      pre[i]->forward_[i] = new_node;
+    }
+  }
 }
 
 // 查找键值对
@@ -95,7 +131,6 @@ void SkipList::remove(const std::string &key) {
 std::vector<std::tuple<std::string, std::string, uint64_t>> SkipList::flush() {
   // std::shared_lock<std::shared_mutex> slock(rw_mutex);
   spdlog::debug("SkipList--flush(): Starting to flush skiplist data");
-
   std::vector<std::tuple<std::string, std::string, uint64_t>> data;
   auto node = head->forward_[0];
   while (node) {
