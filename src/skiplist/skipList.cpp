@@ -41,8 +41,20 @@ bool SkipListIterator::is_valid() const {
 }
 bool SkipListIterator::is_end() const { return current == nullptr; }
 
-std::string SkipListIterator::get_key() const { return current->key_; }
-std::string SkipListIterator::get_value() const { return current->value_; }
+std::string SkipListIterator::get_key() const {
+  // return current->key_; 这种情况如果current为nullptr则会SE
+  if (current != nullptr) {
+    return current->key_;
+  }
+  return "";
+}
+std::string SkipListIterator::get_value() const {
+  //return current->value_
+  if (current != nullptr) {
+    return current->value_;
+  }
+  return "";
+}
 uint64_t SkipListIterator::get_tranc_id() const { return current->tranc_id_; }
 
 // ************************ SkipList ************************
@@ -100,7 +112,7 @@ void SkipList::put(const std::string &key, const std::string &value,
       for (int i = current_level; i < new_level; i++) {
         pre[i] = head;
       }
-      current_level=new_level;
+      current_level = new_level;
     }
     for (int i = 0; i < new_level; i++) {
       new_node->forward_[i] = pre[i]->forward_[i];
@@ -117,6 +129,20 @@ SkipListIterator SkipList::get(const std::string &key, uint64_t tranc_id) {
 
   // TODO: Lab1.1 任务：实现查找键值对,
   // TODO: 并且你后续需要额外实现SkipListIterator中的TODO部分(Lab1.2)
+
+  std::shared_ptr<SkipListNode> current = head;
+
+  for (int i = current_level - 1; i >= 0; i--) {
+    while (current->forward_[i] != nullptr &&
+           current->forward_[i]->key_ < key) {
+      current = current->forward_[i];
+    }
+  }
+  current = current->forward_[0];
+  if (current != nullptr && current->key_ == key) {
+    return SkipListIterator(current);
+  }
+
   return SkipListIterator{};
 }
 
@@ -125,6 +151,27 @@ SkipListIterator SkipList::get(const std::string &key, uint64_t tranc_id) {
 // ! 这里只是为了实现完整的 SkipList 不会真正被上层调用
 void SkipList::remove(const std::string &key) {
   // TODO: Lab1.1 任务：实现删除键值对
+  auto p=head;
+  std::vector<std::shared_ptr<SkipListNode>> pre(max_level);
+  for(int i=current_level-1;i>=0;i--){
+    while(p->forward_[i]!=nullptr&&p->forward_[i]->key_<key){
+      p=p->forward_[i];
+    }
+    pre[i]=p;
+  }
+  auto target=pre[0]->forward_[0];
+  if(target!=nullptr&&target->key_==key){ //找到了待删除节点位置
+    for(int i=0;i<current_level;i++){ 
+      if(pre[i]->forward_[i]==target){
+        pre[i]->forward_[i]=target->forward_[i];
+      }else{
+        break;
+      }
+    }
+  }
+  while(current_level>1&&head->forward_[current_level-1]==nullptr){
+    current_level--;
+  }
 }
 
 // 刷盘时可以直接遍历最底层链表
