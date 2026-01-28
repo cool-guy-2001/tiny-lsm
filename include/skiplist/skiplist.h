@@ -22,9 +22,9 @@ struct SkipListNode {
   std::string value_; // 节点存储的值
   uint64_t tranc_id_; // 事务 id
   std::vector<std::shared_ptr<SkipListNode>>
-      forward_; // 同一节点指向不同层级的下一个节点的指针数组
+      forward_; // 同一节点指向不同层级的后缀节点的指针数组
   std::vector<std::weak_ptr<SkipListNode>>
-      backward_; // 指向不同层级的下一个节点的指针数组
+      backward_; // 同一节点指向不同层级的前驱节点的指针数组
   SkipListNode(const std::string &k, const std::string &v, int level,
                uint64_t tranc_id)
       : key_(k), value_(v), tranc_id_(tranc_id), forward_(level, nullptr),

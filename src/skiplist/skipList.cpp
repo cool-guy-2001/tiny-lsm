@@ -126,14 +126,15 @@ void SkipList::put(const std::string &key, const std::string &value,
   }
   p = p->forward_[0];
   if (p != nullptr && p->key_ == key) {
-    size_bytes-=p->value_.size();
+    size_bytes -= p->value_.size();
     p->value_ = value;
-    size_bytes+=p->value_.size();
+    size_bytes += p->value_.size();
   } else {
     int new_level = random_level();
     std::shared_ptr<SkipListNode> new_node;
     new_node = std::make_shared<SkipListNode>(key, value, new_level, tranc_id);
-    size_bytes += new_node->key_.size() + new_node->value_.size() + sizeof(uint64_t);
+    size_bytes +=
+        new_node->key_.size() + new_node->value_.size() + sizeof(uint64_t);
 
     if (new_level > current_level) {
       for (int i = current_level; i < new_level; i++) {
@@ -142,8 +143,12 @@ void SkipList::put(const std::string &key, const std::string &value,
       current_level = new_level;
     }
     for (int i = 0; i < new_level; i++) {
-      new_node->forward_[i] = pre[i]->forward_[i];
+      auto next = pre[i]->forward_[i];
+      new_node->forward_[i] = next;
       pre[i]->forward_[i] = new_node;
+      new_node->set_backward(i, pre[i]);
+      if (next != nullptr)
+        next->set_backward(i, new_node);
     }
   }
 }
@@ -188,10 +193,14 @@ void SkipList::remove(const std::string &key) {
   }
   auto target = pre[0]->forward_[0];
   if (target != nullptr && target->key_ == key) { //找到了待删除节点位置
-    size_bytes -= target->key_.size() + target->value_.size() + sizeof(uint64_t);
+    size_bytes -=
+        target->key_.size() + target->value_.size() + sizeof(uint64_t);
     for (int i = 0; i < current_level; i++) {
       if (pre[i]->forward_[i] == target) {
-        pre[i]->forward_[i] = target->forward_[i];
+        auto next = target->forward_[i];
+        pre[i]->forward_[i] = next;
+        if (next)
+          next->set_backward(i, pre[i]);
       } else {
         break;
       }
@@ -299,27 +308,25 @@ SkipList::iters_monotony_predicate(
       current = current->forward_[i];
     }
   }
-  auto node0 = current->forward_[0];
-  if (node0 == nullptr || predicate(node0->key_) != 0)
+  auto node1 = current->forward_[0];
+  if (node1 == nullptr || predicate(node1->key_) != 0)
     return std::nullopt;
-
+  auto left = node1;
+  while (true) {
+    auto pre = left->backward_[0].lock();
+    if (pre && predicate(pre->key_) == 0)
+      left = pre;
+    else
+      break;
+  }
   // std::cout<<"Fount start node:"<<node0->key_<<std::endl;
 
-  auto left = node0;
-  while (left != nullptr && predicate(left->key_) == 0) {
-    left = left->backward_[0].lock();
-  }
-  // if(left!=nullptr){
-  //   std::cout<<"Found node2:"<<left->key_<<std::endl;
-  // }else{
-  //   std::cout<<"node2 is nullptr"<<std::endl;
-  // }
-  auto right = node0;
+  auto right = node1;
   while (right != nullptr && predicate(right->key_) == 0) {
     right = right->forward_[0];
   }
 
-  auto begin_it = SkipListIterator(left->forward_[0]);
+  auto begin_it = SkipListIterator(left);
   auto end_it = SkipListIterator(right);
   return std::make_pair(begin_it, end_it);
 }
