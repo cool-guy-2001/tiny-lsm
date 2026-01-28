@@ -1,8 +1,10 @@
 #include "../../include/skiplist/skiplist.h"
 #include "iterator/iterator.h"
+#include <cstddef>
 #include <cstdint>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <spdlog/spdlog.h>
 #include <stdexcept>
 #include <tuple>
@@ -12,14 +14,14 @@ namespace tiny_lsm {
 
 // ************************ SkipListIterator ************************
 
-//SkipListIterator就是"跳表版本"的迭代器，把"怎么从一个SkipListNode走到下一个节点"封装起来
+// SkipListIterator就是"跳表版本"的迭代器，把"怎么从一个SkipListNode走到下一个节点"封装起来
 
-//BaseIterator里将这些函数定义为虚函数,查看iterator.h
+// BaseIterator里将这些函数定义为虚函数,查看iterator.h
 BaseIterator &SkipListIterator::operator++() {
   // TODO: Lab1.2 任务：实现SkipListIterator的++操作符
-  if(is_end())
+  if (is_end())
     return *this;
-  current=current->forward_[0];
+  current = current->forward_[0];
   return *this;
 }
 
@@ -27,24 +29,25 @@ bool SkipListIterator::operator==(const BaseIterator &other) const {
 
   // TODO: Lab1.2 任务：实现SkipListIterator的==操作符
 
-  //other是基类BaseIterator的引用，没有current,只有把它转回子类SkipListIterator才能访问成员current
-  //c++中基类引用->子类引用的安全方式是:dynamic_cast
-  auto p=dynamic_cast<const SkipListIterator*>(&other);
-  //p指向other本身，只不过类型从BaseIterator*变成了SkipListIterator*
-  if(p==nullptr)  //cast失败，ohter是别的子类对象，如(SstIterator),但用SkipListIterator去cast它
+  // other是基类BaseIterator的引用，没有current,只有把它转回子类SkipListIterator才能访问成员current
+  // c++中基类引用->子类引用的安全方式是:dynamic_cast
+  auto p = dynamic_cast<const SkipListIterator *>(&other);
+  // p指向other本身，只不过类型从BaseIterator*变成了SkipListIterator*
+  if (p ==
+      nullptr) // cast失败，ohter是别的子类对象，如(SstIterator),但用SkipListIterator去cast它
     return false;
-  return this->current==p->current;
+  return this->current == p->current;
 }
 
 bool SkipListIterator::operator!=(const BaseIterator &other) const {
   // TODO: Lab1.2 任务：实现SkipListIterator的!=操作符
-  return !(*this==other);
+  return !(*this == other);
 }
 
 SkipListIterator::value_type SkipListIterator::operator*() const {
   // TODO: Lab1.2 任务：实现SkipListIterator的*操作符
-  if(is_valid()){
-    return {current->key_,current->value_};
+  if (is_valid()) {
+    return {current->key_, current->value_};
   }
   return {"", ""};
 }
@@ -56,8 +59,9 @@ IteratorType SkipListIterator::get_type() const {
 }
 
 bool SkipListIterator::is_valid() const {
-  //return current && !current->key_.empty(); 如果是空key的话，key_.empty()会出错
-  return current!=nullptr;
+  // return current && !current->key_.empty();
+  // 如果是空key的话，key_.empty()会出错
+  return current != nullptr;
 }
 bool SkipListIterator::is_end() const { return current == nullptr; }
 
@@ -69,7 +73,7 @@ std::string SkipListIterator::get_key() const {
   return "";
 }
 std::string SkipListIterator::get_value() const {
-  //return current->value_
+  // return current->value_
   if (current != nullptr) {
     return current->value_;
   }
@@ -122,11 +126,14 @@ void SkipList::put(const std::string &key, const std::string &value,
   }
   p = p->forward_[0];
   if (p != nullptr && p->key_ == key) {
+    size_bytes-=p->value_.size();
     p->value_ = value;
+    size_bytes+=p->value_.size();
   } else {
     int new_level = random_level();
     std::shared_ptr<SkipListNode> new_node;
     new_node = std::make_shared<SkipListNode>(key, value, new_level, tranc_id);
+    size_bytes += new_node->key_.size() + new_node->value_.size() + sizeof(uint64_t);
 
     if (new_level > current_level) {
       for (int i = current_level; i < new_level; i++) {
@@ -171,25 +178,26 @@ SkipListIterator SkipList::get(const std::string &key, uint64_t tranc_id) {
 // ! 这里只是为了实现完整的 SkipList 不会真正被上层调用
 void SkipList::remove(const std::string &key) {
   // TODO: Lab1.1 任务：实现删除键值对
-  auto p=head;
+  auto p = head;
   std::vector<std::shared_ptr<SkipListNode>> pre(max_level);
-  for(int i=current_level-1;i>=0;i--){
-    while(p->forward_[i]!=nullptr&&p->forward_[i]->key_<key){
-      p=p->forward_[i];
+  for (int i = current_level - 1; i >= 0; i--) {
+    while (p->forward_[i] != nullptr && p->forward_[i]->key_ < key) {
+      p = p->forward_[i];
     }
-    pre[i]=p;
+    pre[i] = p;
   }
-  auto target=pre[0]->forward_[0];
-  if(target!=nullptr&&target->key_==key){ //找到了待删除节点位置
-    for(int i=0;i<current_level;i++){ 
-      if(pre[i]->forward_[i]==target){
-        pre[i]->forward_[i]=target->forward_[i];
-      }else{
+  auto target = pre[0]->forward_[0];
+  if (target != nullptr && target->key_ == key) { //找到了待删除节点位置
+    size_bytes -= target->key_.size() + target->value_.size() + sizeof(uint64_t);
+    for (int i = 0; i < current_level; i++) {
+      if (pre[i]->forward_[i] == target) {
+        pre[i]->forward_[i] = target->forward_[i];
+      } else {
         break;
       }
     }
   }
-  while(current_level>1&&head->forward_[current_level-1]==nullptr){
+  while (current_level > 1 && head->forward_[current_level - 1] == nullptr) {
     current_level--;
   }
 }
@@ -212,6 +220,7 @@ std::vector<std::tuple<std::string, std::string, uint64_t>> SkipList::flush() {
 
 size_t SkipList::get_size() {
   // std::shared_lock<std::shared_mutex> slock(rw_mutex);
+
   return size_bytes;
 }
 
@@ -235,13 +244,31 @@ SkipListIterator SkipList::end() {
 // 返回第一个前缀匹配或者大于前缀的迭代器
 SkipListIterator SkipList::begin_preffix(const std::string &preffix) {
   // TODO: Lab1.3 任务：实现前缀查询的起始位置
-  return SkipListIterator{};
+  //找>=preffix的第一个位置
+  auto current = head;
+  for (int i = current_level - 1; i >= 0; i--) {
+    while (current->forward_[i] != nullptr &&
+           current->forward_[i]->key_ < preffix) {
+      current = current->forward_[i];
+    }
+  }
+  return SkipListIterator{current->forward_[0]}; /*  */
 }
 
-// 找到前缀的终结位置
-SkipListIterator SkipList::end_preffix(const std::string &prefix) {
+// 找到前缀的终结位置(第一个不再满足前缀匹配的迭代器)
+SkipListIterator SkipList::end_preffix(const std::string &preffix) {
   // TODO: Lab1.3 任务：实现前缀查询的终结位置
-  return SkipListIterator{};
+  auto it = begin_preffix(preffix);
+  auto check = [&](const std::string &key) -> bool {
+    if (key.size() < preffix.size())
+      return false;
+    return key.compare(0, preffix.size(), preffix) == 0;
+  };
+
+  while (it.is_valid() && check(it.get_key()))
+    ++it;
+
+  return it;
 }
 
 // ? 这里单调谓词的含义是, 整个数据库只会有一段连续区间满足此谓词
@@ -254,11 +281,47 @@ SkipListIterator SkipList::end_preffix(const std::string &prefix) {
 // ?   >0: 不满足谓词, 需要向右移动
 // ?   <0: 不满足谓词, 需要向左移动
 // ! Skiplist 中的谓词查询不会进行事务id的判断, 需要上层自己进行判断
+// std::optional,c++ 17中的“可空返回值”
+
 std::optional<std::pair<SkipListIterator, SkipListIterator>>
 SkipList::iters_monotony_predicate(
     std::function<int(const std::string &)> predicate) {
   // TODO: Lab1.3 任务：实现谓词查询的起始位置
-  return std::nullopt;
+  auto current = head;
+
+  //打印当前跳表状态
+  // print_skiplist();
+
+  for (int i = current_level - 1; i >= 0; i--) {
+    while (current->forward_[i] != nullptr &&
+           predicate(current->forward_[i]->key_) >
+               0) { //按照test_skiplist.cpp中predicate的逻辑
+      current = current->forward_[i];
+    }
+  }
+  auto node0 = current->forward_[0];
+  if (node0 == nullptr || predicate(node0->key_) != 0)
+    return std::nullopt;
+
+  // std::cout<<"Fount start node:"<<node0->key_<<std::endl;
+
+  auto left = node0;
+  while (left != nullptr && predicate(left->key_) == 0) {
+    left = left->backward_[0].lock();
+  }
+  // if(left!=nullptr){
+  //   std::cout<<"Found node2:"<<left->key_<<std::endl;
+  // }else{
+  //   std::cout<<"node2 is nullptr"<<std::endl;
+  // }
+  auto right = node0;
+  while (right != nullptr && predicate(right->key_) == 0) {
+    right = right->forward_[0];
+  }
+
+  auto begin_it = SkipListIterator(left->forward_[0]);
+  auto end_it = SkipListIterator(right);
+  return std::make_pair(begin_it, end_it);
 }
 
 // ? 打印跳表, 你可以在出错时调用此函数进行调试
