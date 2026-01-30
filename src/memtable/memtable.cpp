@@ -74,6 +74,7 @@ SkipListIterator MemTable::frozen_get_(const std::string &key,
   // TODO: Lab2.1 从冻结跳表中查询
   // ? 你需要尤其注意跳表的遍历顺序
   // ? tranc_id 参数可暂时忽略, 直接传递参数即可
+  // frozen_tables是一个list,插入采用push_front,所以越靠前的数据越新,因此从表头开始顺序读取即可
   for (auto &tabe : frozen_tables) {
     auto result = tabe->get(key, tranc_id);
     if (result.is_valid())
@@ -87,12 +88,14 @@ SkipListIterator MemTable::get(const std::string &key, uint64_t tranc_id) {
   // ? 注意并发控制
   {
     std::shared_lock<std::shared_mutex> cur_lock(
-        cur_mtx); //先加读锁,再查current_table
+        cur_mtx); //先加读锁,再查current_table,加读锁保证读取期间数据结构不被写线程破坏
     auto cur_it = cur_get_(key, tranc_id);
     if (cur_it.is_valid()) {
       return cur_it;
     }
   }
+  //读取完current_table，应该把读锁释放，所以加{}限制作用域
+  //同时持有多把锁的话，锁粒度变大，会阻塞写线程
   {
     std::shared_lock<std::shared_mutex> frozen_lock(frozen_mtx);
     auto frozen_it = frozen_get_(key, tranc_id);
@@ -105,6 +108,14 @@ SkipListIterator MemTable::get(const std::string &key, uint64_t tranc_id) {
 
 SkipListIterator MemTable::get_(const std::string &key, uint64_t tranc_id) {
   // TODO: Lab2.1 查询, 无锁版本
+  auto cur_it=cur_get_(key,tranc_id);
+  if(cur_it.is_valid()){
+    return cur_it;
+  }
+  auto frozen_it=frozen_get_(key, tranc_id);
+  if(frozen_it.is_valid()){
+    return frozen_it;
+  }
   return SkipListIterator{};
 }
 
@@ -169,15 +180,37 @@ MemTable::get_batch(const std::vector<std::string> &keys, uint64_t tranc_id) {
 
 void MemTable::remove_(const std::string &key, uint64_t tranc_id) {
   // TODO Lab2.1 无锁版本的remove
+  //插入value为空的键值对表示对数据的删除标记
+  current_table->put(key,"", tranc_id);
+  size_t limit=TomlConfig::getInstance().getLsmPerMemSizeLimit();
+  if(current_table->get_size()>limit){
+    frozen_cur_table_();
+  }
 }
 
 void MemTable::remove(const std::string &key, uint64_t tranc_id) {
   // TODO Lab2.1 有锁版本的remove
+  std::unique_lock<std::shared_mutex> cur_lock(cur_mtx);
+  current_table->put(key, "", tranc_id);
+  size_t limit=TomlConfig::getInstance().getLsmPerMemSizeLimit();
+  if(current_table->get_size()>limit){
+    std::unique_lock<std::shared_mutex> frozen_lock(frozen_mtx);
+    frozen_cur_table_();
+  }
 }
 
 void MemTable::remove_batch(const std::vector<std::string> &keys,
                             uint64_t tranc_id) {
   // TODO Lab2.1 有锁版本的remove_batch
+  std::unique_lock<std::shared_mutex> cur_lock(cur_mtx);
+  size_t limit=TomlConfig::getInstance().getLsmPerMemSizeLimit();
+  for (const auto &key:keys){
+    current_table->put(key,"",tranc_id);
+    if(current_table->get_size()>limit){
+      std::unique_lock<std::shared_mutex> frozen_lock(frozen_mtx);
+      frozen_cur_table_();
+    }
+  }
 }
 
 void MemTable::clear() {
@@ -239,6 +272,9 @@ MemTable::flush_last(SSTBuilder &builder, std::string &sst_path, size_t sst_id,
 
 void MemTable::frozen_cur_table_() {
   // TODO: 冻结活跃表
+  frozen_tables.push_front(current_table);
+  frozen_bytes+=current_table->get_size();
+  current_table=std::make_shared<SkipList>();
 }
 
 void MemTable::frozen_cur_table() {
