@@ -279,6 +279,9 @@ void MemTable::frozen_cur_table_() {
 
 void MemTable::frozen_cur_table() {
   // TODO: 冻结活跃表, 有锁版本
+  std::unique_lock<std::shared_mutex> cur_lock(cur_mtx);
+  std::unique_lock<std::shared_mutex> frozen_lock(frozen_mtx);
+  frozen_cur_table_();
 }
 
 size_t MemTable::get_cur_size() {
@@ -299,6 +302,7 @@ size_t MemTable::get_total_size() {
 
 HeapIterator MemTable::begin(uint64_t tranc_id) {
   // TODO Lab 2.2 MemTable 的迭代器
+  
   return {};
 }
 
