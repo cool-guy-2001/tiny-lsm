@@ -61,12 +61,16 @@ HeapIterator::HeapIterator(std::vector<SearchItem> item_vec,
 
 HeapIterator::pointer HeapIterator::operator->() const {
   // TODO: Lab2.2 实现 -> 重载
-
+  if(current!=nullptr){
+    return current.get();
+  }
   return nullptr;
 }
 
 HeapIterator::value_type HeapIterator::operator*() const {
   // TODO: Lab2.2 实现 * 重载
+  if(current!=nullptr)
+    return *current;
   return {};
 }
 
@@ -94,12 +98,30 @@ BaseIterator &HeapIterator::operator++() {
 
 bool HeapIterator::operator==(const BaseIterator &other) const {
   // TODO: Lab2.2 实现 == 重载
-  return true;
+  auto p=dynamic_cast<const HeapIterator*>(&other);
+  if(!p)
+    return false;
+  if(p->is_end()&&this->is_end()){
+    return true;
+  }
+  if(p->is_end()!=this->is_end()){
+    return false;
+  }
+  if(!p->is_end()&&!this->is_end()){
+    if(p->current!=nullptr&&this->current!=nullptr){
+      return p->current->first==this->current->first;
+    }else{
+      return false;
+    }
+  }
+  return false;
 }
 
 bool HeapIterator::operator!=(const BaseIterator &other) const {
   // TODO: Lab2.2 实现 != 重载
-  return true;
+  //return !(HeapIterator::operator==(other));
+  return !(*this==other);
+  //return true;
 }
 
 bool HeapIterator::top_value_legal() const {

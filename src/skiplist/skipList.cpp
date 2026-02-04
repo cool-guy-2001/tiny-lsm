@@ -33,9 +33,10 @@ bool SkipListIterator::operator==(const BaseIterator &other) const {
   // c++中基类引用->子类引用的安全方式是:dynamic_cast
   auto p = dynamic_cast<const SkipListIterator *>(&other);
   // p指向other本身，只不过类型从BaseIterator*变成了SkipListIterator*
-  if (p ==
-      nullptr) // cast失败，ohter是别的子类对象，如(SstIterator),但用SkipListIterator去cast它
+
+  if (p == nullptr)
     return false;
+  // cast失败，ohter是别的子类对象，如(SstIterator),但用SkipListIterator去cast它
   return this->current == p->current;
 }
 
