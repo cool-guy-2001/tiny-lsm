@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -35,7 +36,7 @@ class Block : public std::enable_shared_from_this<Block> {
 private:
   std::vector<uint8_t> data;
   std::vector<uint16_t> offsets;
-  size_t capacity;
+  size_t capacity;//容量限制
 
   struct Entry {
     std::string key;

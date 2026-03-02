@@ -14,6 +14,7 @@ Block::Block(size_t capacity) : capacity(capacity) {}
 
 std::vector<uint8_t> Block::encode() {
   // TODO Lab 3.1 编码单个类实例形成一段字节数组
+
   return {};
 }
 
@@ -51,7 +52,34 @@ bool Block::add_entry(const std::string &key, const std::string &value,
   // ? 返回值说明：
   // ? true: 成功添加
   // ? false: block已满, 拒绝此次添加
-  return false;
+  //新加入的实体entry序列化后的大小
+  size_t entry_size = 2 + key.size() + 2 + value.size() + 8;
+
+  //预估加入新entry后的block大小
+  size_t estimate_size =
+      data.size() + (offsets.size() + 1) * 2 + entry_size + 2;
+  //容量检查
+  if (!force_write && estimate_size > capacity && !is_empty())
+    return false;
+  //记录当前新entry的偏移量
+  uint16_t current_offset = static_cast<uint16_t>(data.size());
+  offsets.push_back(current_offset);
+  uint16_t key_len = static_cast<uint16_t>(key.size());
+  data.push_back(static_cast<uint8_t>(key_len & 0xFF));
+  data.push_back(static_cast<uint8_t>((key_len >> 8) & 0xFF));
+  //插入key
+  data.insert(data.end(), key.begin(), key.end());
+
+  uint16_t value_len = static_cast<uint16_t>(value.size());
+  data.push_back(static_cast<uint8_t>(value_len & 0xFF));
+  data.push_back(static_cast<uint8_t>((value_len >> 8) & 0xFF));
+
+  data.insert(data.end(), value.begin(), value.end());
+
+  for (int i = 0; i < 8; i++) {
+    data.push_back(static_cast<uint8_t>((tranc_id >> (i * 8)) & 0xFF));
+  }
+  return true;
 }
 
 // 从指定偏移量获取entry的key
