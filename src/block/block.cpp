@@ -8,20 +8,59 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 
 namespace tiny_lsm {
 Block::Block(size_t capacity) : capacity(capacity) {}
 
 std::vector<uint8_t> Block::encode() {
   // TODO Lab 3.1 编码单个类实例形成一段字节数组
+  std::vector<uint8_t> buffer;
+  uint16_t entry_nums = static_cast<uint16_t>(offsets.size());
+  size_t total_size = data.size() + entry_nums * 2 + 2;
+  buffer.reserve(total_size);
 
-  return {};
+  buffer.insert(buffer.end(), data.begin(), data.end());
+
+  for (uint16_t offset : offsets) {
+    buffer.push_back(static_cast<uint8_t>(offset & 0xFF));
+    buffer.push_back(static_cast<uint8_t>((offset >> 8) & 0xFF));
+  }
+  buffer.push_back(static_cast<uint8_t>(entry_nums & 0xFF));
+  buffer.push_back(static_cast<uint8_t>((entry_nums >> 8) & 0xFF));
+  return buffer;
 }
 
 std::shared_ptr<Block> Block::decode(const std::vector<uint8_t> &encoded,
                                      bool with_hash) {
   // TODO Lab 3.1 解码字节数组形成类实例
-  return nullptr;
+  size_t size = encoded.size();
+  if (size < (with_hash ? 6 : 2)) {
+    return std::make_shared<Block>();
+  }
+  size_t end_pos = with_hash ? size - 4 : size;
+  //这里需要做一次类型转换
+  // uint16_t entry_nums = encoded[end_pos-2]|(encoded[end_pos-1]<<8);
+  //从最后两字节获得实体数量
+  uint16_t entry_nums =
+      encoded[end_pos - 2] | (static_cast<uint16_t>(encoded[end_pos - 1] << 8));
+
+  size_t offset_size = entry_nums * 2;
+  size_t data_end = end_pos - 2 - offset_size;
+  //解码Data
+  auto block = std::make_shared<Block>();
+  block->data.assign(encoded.begin(), encoded.begin() + data_end);
+
+  //解码offsets
+  block->offsets.reserve(entry_nums);
+  for (size_t i = 0; i < entry_nums; ++i) {
+    size_t pos = data_end + i * 2;
+    uint16_t offset =
+        encoded[pos] | (static_cast<uint16_t>(encoded[pos + 1] << 8));
+    block->offsets.push_back(offset);
+  }
+  // printf("Decoded entries: %zu\n", block->offsets.size());
+  return block;
 }
 
 std::string Block::get_first_key() {
@@ -29,18 +68,19 @@ std::string Block::get_first_key() {
     return "";
   }
 
-  // 读取第一个key的长度（前2字节）
-  uint16_t key_len;
-  memcpy(&key_len, data.data(), sizeof(uint16_t));
+  // // 读取第一个key的长度（前2字节）
+  // uint16_t key_len;
+  // memcpy(&key_len, data.data(), sizeof(uint16_t));
 
-  // 读取key
-  std::string key(reinterpret_cast<char *>(data.data() + sizeof(uint16_t)),
-                  key_len);
-  return key;
+  // // 读取key
+  // std::string key(reinterpret_cast<char *>(data.data() + sizeof(uint16_t)),
+  //                 key_len);
+  // return key;
+  return get_key_at(offsets[0]);
 }
 
 size_t Block::get_offset_at(size_t idx) const {
-  if (idx > offsets.size()) {
+  if (idx >= offsets.size()) {
     throw std::runtime_error("idx out of offsets range");
   }
   return offsets[idx];
@@ -85,24 +125,45 @@ bool Block::add_entry(const std::string &key, const std::string &value,
 // 从指定偏移量获取entry的key
 std::string Block::get_key_at(size_t offset) const {
   // TODO Lab 3.1 从指定偏移量获取entry的key
-  return "";
+  uint16_t key_len = data[offset] | (data[offset + 1] << 8);
+  return std::string(reinterpret_cast<const char *>(&data[offset + 2]),
+                     key_len);
 }
 
 // 从指定偏移量获取entry的value
 std::string Block::get_value_at(size_t offset) const {
   // TODO Lab 3.1 从指定偏移量获取entry的value
-  return "";
+  uint16_t key_len = data[offset] | (data[offset + 1] << 8);
+  size_t value_len_pos = offset + 2 + key_len;
+  uint16_t value_len = data[value_len_pos] | (data[value_len_pos + 1] << 8);
+  return std::string(reinterpret_cast<const char *>(data[value_len_pos + 2]),
+                     value_len);
 }
 
 uint64_t Block::get_tranc_id_at(size_t offset) const {
   // TODO Lab 3.1 从指定偏移量获取entry的tranc_id
   // ? 你不需要理解tranc_id的具体含义, 直接返回即可
-  return 0;
+  uint16_t key_len = data[offset] | (data[offset + 1] << 8);
+  size_t value_len_pos = offset + 2 + key_len;
+  uint16_t value_len = data[value_len_pos] | (data[value_len_pos + 1] << 8);
+  size_t tranc_id_pos = value_len_pos + 2 + value_len;
+  uint64_t tranc_id = 0;
+  for (int i = 0; i < 8; ++i) {
+    tranc_id |= (static_cast<uint64_t>(data[tranc_id_pos + i]) << (i * 8));
+  }
+  return tranc_id;
 }
 
 // 比较指定偏移量处的key与目标key
 int Block::compare_key_at(size_t offset, const std::string &target) const {
-  std::string key = get_key_at(offset);
+  //写了get_entry_at之后，调用get_key_at会解析value,而每次二分只用解析key,所以单独处理一下
+  uint16_t key_len = data[offset] | (data[offset + 1] << 8);
+  std::string_view key(reinterpret_cast<const char *>(data.data() + offset + 2),
+                       key_len);
+  //代替reinterpret_cast<const char
+  //*>(&data[offset+2]),更具可读性，且直接使用底层指针
+  //用string_view 避免内存拷贝
+
   return key.compare(target);
 }
 
@@ -125,18 +186,46 @@ bool Block::is_same_key(size_t idx, const std::string &target_key) const {
 // 要求在插入数据时有序插入
 std::optional<std::string> Block::get_value_binary(const std::string &key,
                                                    uint64_t tranc_id) {
-  auto idx = get_idx_binary(key, tranc_id);
-  if (!idx.has_value()) {
+  // auto idx = get_idx_binary(key, tranc_id);
+  // if (!idx.has_value()) {
+  //   return std::nullopt;
+  // }
+
+  // return get_value_at(offsets[*idx]);
+  auto idx_opt = get_idx_binary(key, tranc_id);
+  if (!idx_opt.has_value()) {
     return std::nullopt;
   }
-
-  return get_value_at(offsets[*idx]);
+  size_t idx = idx_opt.value();
+  size_t offset = get_offset_at(idx);
+  if (get_key_at(offset) == key) {
+    return get_value_at(offset);
+  }
+  return std::nullopt;
 }
 
 std::optional<size_t> Block::get_idx_binary(const std::string &key,
                                             uint64_t tranc_id) {
   // TODO Lab 3.1 使用二分查找获取key对应的索引
-  return std::nullopt;
+  if (offsets.empty())
+    return std::nullopt;
+  size_t left = 0;
+  size_t right = offsets.size();
+  while (left < right) {
+    size_t mid = left + (right - left) / 2;
+    //查找第mid个entry的偏移量
+    size_t offset = get_offset_at(mid);
+    std::string mid_key = get_key_at(offset);
+    if (mid_key < key) {
+      left = mid + 1;
+    } else {
+      right = mid;
+    }
+  }
+  if (left >= offsets.size()) {
+    return std::nullopt;
+  }
+  return left;
 }
 
 std::optional<
