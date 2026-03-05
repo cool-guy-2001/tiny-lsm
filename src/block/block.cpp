@@ -43,7 +43,7 @@ std::shared_ptr<Block> Block::decode(const std::vector<uint8_t> &encoded,
     throw std::runtime_error("encoded block is too small");
   }
 
-  // with_hash 时末尾 4B 是 hash，需要先排除
+  // with_hash=true 时，末尾 4B 为 hash
   size_t end_pos = with_hash ? size - 4 : size;
   if (end_pos < 2) {
     throw std::runtime_error("invalid encoded block tail");
@@ -109,9 +109,7 @@ bool Block::add_entry(const std::string &key, const std::string &value,
   // ? 返回值说明：
   // ? true: 成功添加
   // ? false: block已满, 拒绝此次添加
-  //计算实体的大小
   size_t entry_size = sizeof(uint16_t) + key.size() + sizeof(uint16_t) + value.size() + sizeof(uint64_t);
-
 
   size_t estimate_size =
       data.size() + (offsets.size() + 1) * sizeof(uint16_t) + entry_size + 2;
@@ -227,9 +225,9 @@ int Block::compare_key_at(size_t offset, const std::string &target) const {
 }
 
 int Block::adjust_idx_by_tranc_id(size_t idx, uint64_t tranc_id) {
-  // TODO Lab3.1 这里在后续事务相关Lab会继续返修
-  // 相同key连续分布, 且相同key的事务id从大到小排布
-  // 这里的逻辑是找到最接近 tranc_id 的键值对位置
+  // TODO Lab3.1 不需要在Lab3.1中完整实现, 只是进行标记
+  // ? 相同key连续分布, 且相同key的事务id从大到小排布
+  // ? 这里的逻辑是找到最接近 tranc_id 的键值对的索引位置
   if (idx >= offsets.size()) {
     return -1;
   }
@@ -312,8 +310,8 @@ std::optional<
     std::pair<std::shared_ptr<BlockIterator>, std::shared_ptr<BlockIterator>>>
 Block::get_monotony_predicate_iters(
     uint64_t tranc_id, std::function<int(const std::string &)> predicate) {
-  // TODO Lab 3.3 使用二分查找获取满足谓词的区间迭代器
-  // 这里先采用线性扫描实现正确性，后续可优化为二分边界查找
+  // TODO: Lab 3.3 使用二分查找获取满足谓词的区间迭代器
+  // 这里先采用线性扫描实现正确性，后续可替换为二分优化
   BlockIterator it = begin(tranc_id);
   BlockIterator end_it = end();
 
