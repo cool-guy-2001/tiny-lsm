@@ -19,7 +19,7 @@ std::vector<uint8_t> Block::encode() {
   uint16_t entry_nums = static_cast<uint16_t>(offsets.size());
   size_t total_size = data.size() + entry_nums * 2 + 2;
   buffer.reserve(total_size);
-
+  
   buffer.insert(buffer.end(), data.begin(), data.end());
 
   for (uint16_t offset : offsets) {
@@ -46,6 +46,10 @@ std::shared_ptr<Block> Block::decode(const std::vector<uint8_t> &encoded,
       encoded[end_pos - 2] | (static_cast<uint16_t>(encoded[end_pos - 1] << 8));
 
   size_t offset_size = entry_nums * 2;
+
+  if (end_pos < 2 + offset_size)
+    return std::make_shared<Block>();
+
   size_t data_end = end_pos - 2 - offset_size;
   //解码Data
   auto block = std::make_shared<Block>();
@@ -56,7 +60,7 @@ std::shared_ptr<Block> Block::decode(const std::vector<uint8_t> &encoded,
   for (size_t i = 0; i < entry_nums; ++i) {
     size_t pos = data_end + i * 2;
     uint16_t offset =
-        encoded[pos] | (static_cast<uint16_t>(encoded[pos + 1] << 8));
+        encoded[pos] | (static_cast<uint16_t>(encoded[pos + 1]) << 8);
     block->offsets.push_back(offset);
   }
   // printf("Decoded entries: %zu\n", block->offsets.size());
@@ -136,8 +140,9 @@ std::string Block::get_value_at(size_t offset) const {
   uint16_t key_len = data[offset] | (data[offset + 1] << 8);
   size_t value_len_pos = offset + 2 + key_len;
   uint16_t value_len = data[value_len_pos] | (data[value_len_pos + 1] << 8);
-  return std::string(reinterpret_cast<const char *>(data[value_len_pos + 2]),
-                     value_len);
+  return std::string(
+      reinterpret_cast<const char *>(data.data() + value_len_pos + 2),
+      value_len);
 }
 
 uint64_t Block::get_tranc_id_at(size_t offset) const {
