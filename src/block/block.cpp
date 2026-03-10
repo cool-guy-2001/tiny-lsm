@@ -109,10 +109,12 @@ bool Block::add_entry(const std::string &key, const std::string &value,
   // ? 返回值说明：
   // ? true: 成功添加
   // ? false: block已满, 拒绝此次添加
+  //新加入实体的大小
   size_t entry_size = sizeof(uint16_t) + key.size() + sizeof(uint16_t) + value.size() + sizeof(uint64_t);
 
+  //预估加入实体后的大小
   size_t estimate_size =
-      data.size() + (offsets.size() + 1) * sizeof(uint16_t) + entry_size + 2;
+      data.size() + (offsets.size() + 1) * sizeof(uint16_t) + entry_size + sizeof(uint16_t);
   if (!force_write && estimate_size > capacity && !is_empty()) {
     return false;
   }
@@ -206,6 +208,8 @@ uint64_t Block::get_tranc_id_at(size_t offset) const {
 }
 
 int Block::compare_key_at(size_t offset, const std::string &target) const {
+  //函数解析：将offset物理位置的key与target进行比较
+
   // 写了get_entry_at之后，调用get_key_at会解析value
   // 而每次二分只用解析key，所以单独处理一下
   if (offset + 1 >= data.size()) {
@@ -221,6 +225,7 @@ int Block::compare_key_at(size_t offset, const std::string &target) const {
 
   std::string_view key(reinterpret_cast<const char *>(data.data() + key_pos),
                        key_len);
+  //string_view 实现零拷贝，只是一个"窗口",记录key的起始地址和长度                       
   return key.compare(target);
 }
 
@@ -234,7 +239,7 @@ int Block::adjust_idx_by_tranc_id(size_t idx, uint64_t tranc_id) {
   if (tranc_id == 0) {
     return static_cast<int>(idx);
   }
-
+  
   std::string target_key = get_key_at(offsets[idx]);
   for (size_t i = idx;
        i < offsets.size() && get_key_at(offsets[i]) == target_key; ++i) {
@@ -266,6 +271,7 @@ std::optional<std::string> Block::get_value_binary(const std::string &key,
 std::optional<size_t> Block::get_idx_binary(const std::string &key,
                                             uint64_t tranc_id) {
   // TODO Lab 3.1 使用二分查找获取key对应的索引
+  //找到Block中第一个大于等于给定key的entry索引
   if (offsets.empty()) {
     return std::nullopt;
   }
@@ -275,7 +281,7 @@ std::optional<size_t> Block::get_idx_binary(const std::string &key,
   while (left < right) {
     size_t mid = left + (right - left) / 2;
     size_t offset = get_offset_at(mid);
-    if (compare_key_at(offset, key) < 0) {
+    if (compare_key_at(offset, key) < 0) { //offset这个物理位置下的key比target_key小，那么说明需要继续往右找
       left = mid + 1;
     } else {
       right = mid;
@@ -285,7 +291,7 @@ std::optional<size_t> Block::get_idx_binary(const std::string &key,
   if (left >= offsets.size() || !is_same_key(left, key)) {
     return std::nullopt;
   }
-
+  //left即为第一个大于等于key的entry索引
   int adjusted = adjust_idx_by_tranc_id(left, tranc_id);
   if (adjusted < 0) {
     return std::nullopt;

@@ -47,5 +47,6 @@ private:
   size_t current_index;                           // 当前位置的索引
   uint64_t tranc_id_;                             // 当前事务 id
   mutable std::optional<value_type> cached_value; // 缓存当前值
+  //std::optional<std::pair<std::string, std::string> > 当成一个可能装有"键值对"的盒子
 };
 } // namespace tiny_lsm
