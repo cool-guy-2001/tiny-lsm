@@ -58,15 +58,17 @@ BlockIterator &BlockIterator::operator++() {
 bool BlockIterator::operator==(const BlockIterator &other) const {
   // TODO: Lab3.2 == 重载
 
-  return this->block==other.block && this->current_index==other.current_index;
+  return this->block == other.block &&
+         this->current_index == other.current_index;
 }
 
 bool BlockIterator::operator!=(const BlockIterator &other) const {
   // TODO: Lab3.2 != 重载
-  return !(*this==other);
+  return !(*this == other);
 }
 
-BlockIterator::value_type BlockIterator::operator*() const { //返回迭代器当前指向的值
+BlockIterator::value_type
+BlockIterator::operator*() const { //返回迭代器当前指向的值
   // TODO: Lab3.2 * 重载
   update_current();
   return *cached_value;
@@ -96,6 +98,5 @@ void BlockIterator::skip_by_tranc_id() {
   // TODO: Lab3.2 * 跳过事务ID
   // ? 只是进行标记以供你在后续Lab实现事务功能后修改
   // ? 现在你不需要考虑这个函数
-  
 }
 } // namespace tiny_lsm
