@@ -9,6 +9,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace tiny_lsm {
 Block::Block(size_t capacity) : capacity(capacity) {}
@@ -17,8 +18,9 @@ std::vector<uint8_t> Block::encode() {
   // TODO Lab 3.1 编码单个类实例形成一段字节数组
   std::vector<uint8_t> buffer;
   uint16_t entry_nums = static_cast<uint16_t>(offsets.size());
-  //size_t total_size = data.size() + entry_nums * 2 + 2; 
-  size_t total_size=data.size()+entry_nums*sizeof(uint16_t)+sizeof(uint16_t); //用sizeof才是严谨的写法
+  // size_t total_size = data.size() + entry_nums * 2 + 2;
+  size_t total_size = data.size() + entry_nums * sizeof(uint16_t) +
+                      sizeof(uint16_t); //用sizeof才是严谨的写法
   buffer.reserve(total_size);
 
   // Data Section
@@ -110,11 +112,12 @@ bool Block::add_entry(const std::string &key, const std::string &value,
   // ? true: 成功添加
   // ? false: block已满, 拒绝此次添加
   //新加入实体的大小
-  size_t entry_size = sizeof(uint16_t) + key.size() + sizeof(uint16_t) + value.size() + sizeof(uint64_t);
+  size_t entry_size = sizeof(uint16_t) + key.size() + sizeof(uint16_t) +
+                      value.size() + sizeof(uint64_t);
 
   //预估加入实体后的大小
-  size_t estimate_size =
-      data.size() + (offsets.size() + 1) * sizeof(uint16_t) + entry_size + sizeof(uint16_t);
+  size_t estimate_size = data.size() + (offsets.size() + 1) * sizeof(uint16_t) +
+                         entry_size + sizeof(uint16_t);
   if (!force_write && estimate_size > capacity && !is_empty()) {
     return false;
   }
@@ -225,7 +228,7 @@ int Block::compare_key_at(size_t offset, const std::string &target) const {
 
   std::string_view key(reinterpret_cast<const char *>(data.data() + key_pos),
                        key_len);
-  //string_view 实现零拷贝，只是一个"窗口",记录key的起始地址和长度                       
+  // string_view 实现零拷贝，只是一个"窗口",记录key的起始地址和长度
   return key.compare(target);
 }
 
@@ -239,7 +242,7 @@ int Block::adjust_idx_by_tranc_id(size_t idx, uint64_t tranc_id) {
   if (tranc_id == 0) {
     return static_cast<int>(idx);
   }
-  
+
   std::string target_key = get_key_at(offsets[idx]);
   for (size_t i = idx;
        i < offsets.size() && get_key_at(offsets[i]) == target_key; ++i) {
@@ -281,7 +284,8 @@ std::optional<size_t> Block::get_idx_binary(const std::string &key,
   while (left < right) {
     size_t mid = left + (right - left) / 2;
     size_t offset = get_offset_at(mid);
-    if (compare_key_at(offset, key) < 0) { //offset这个物理位置下的key比target_key小，那么说明需要继续往右找
+    if (compare_key_at(offset, key) <
+        0) { // offset这个物理位置下的key比target_key小，那么说明需要继续往右找
       left = mid + 1;
     } else {
       right = mid;
@@ -291,7 +295,7 @@ std::optional<size_t> Block::get_idx_binary(const std::string &key,
   if (left >= offsets.size() || !is_same_key(left, key)) {
     return std::nullopt;
   }
-  //left即为第一个大于等于key的entry索引
+  // left即为第一个大于等于key的entry索引
   int adjusted = adjust_idx_by_tranc_id(left, tranc_id);
   if (adjusted < 0) {
     return std::nullopt;
@@ -308,7 +312,7 @@ Block::iters_preffix(uint64_t tranc_id, const std::string &preffix) {
         if (key.compare(0, preffix.size(), preffix) == 0) {
           return 0;
         }
-        return key < preffix ? 1 : -1;
+        return key < preffix ? 1 : -1; // 1:key在preffix之前，继续向后扫描
       });
 }
 
@@ -316,24 +320,72 @@ std::optional<
     std::pair<std::shared_ptr<BlockIterator>, std::shared_ptr<BlockIterator>>>
 Block::get_monotony_predicate_iters(
     uint64_t tranc_id, std::function<int(const std::string &)> predicate) {
+  // std::function是c++11引入的通用多态函数封装器
+  //它的核心能力是：脱离具体可调用实体的类型，仅通过函数签名提供统一的调用接口。
+  // predicate接受const std::string为参数，返回int类型
   // TODO: Lab 3.3 使用二分查找获取满足谓词的区间迭代器
-  // 这里先采用线性扫描实现正确性，后续可替换为二分优化
-  BlockIterator it = begin(tranc_id);
-  BlockIterator end_it = end();
+  // TODO:这里先采用线性扫描实现正确性，后续可替换为二分优化
+  // BlockIterator it = begin(tranc_id);
+  // BlockIterator end_it = end();
 
-  while (it != end_it && predicate(it->first) > 0) {
-    ++it;
-  }
-  if (it == end_it || predicate(it->first) != 0) {
+  // while (it != end_it && predicate(it->first) > 0) {
+  //   ++it;
+  // }
+  // if (it == end_it || predicate(it->first) != 0) {
+  //   return std::nullopt;
+  // }
+
+  // auto begin_ptr = std::make_shared<BlockIterator>(it);
+  // while (it != end_it && predicate(it->first) == 0) {
+  //   ++it;
+  // }
+  // auto end_ptr = std::make_shared<BlockIterator>(it);
+  if(offsets.empty()){
     return std::nullopt;
   }
-
-  auto begin_ptr = std::make_shared<BlockIterator>(it);
-  while (it != end_it && predicate(it->first) == 0) {
-    ++it;
+  // TODO:二分方法
+  int left = 0, right = offsets.size() - 1;
+  int first_pos = -1;
+  while (left <= right) {
+    int mid = left + (right - left) / 2;
+    size_t mid_offset = offsets[mid];
+    std::string mid_key = get_key_at(mid_offset);
+    int direction = predicate(mid_key);
+    if (direction < 0) {
+      right = mid - 1;
+    } else if (direction > 0) {
+      left = mid + 1;
+    } else {
+      first_pos = mid;
+      right = mid - 1;
+    }
   }
-  auto end_ptr = std::make_shared<BlockIterator>(it);
-  return std::make_pair(begin_ptr, end_ptr);
+  if (first_pos == -1) {
+    return std::nullopt;
+  }
+  left = first_pos;
+  right = offsets.size() - 1;
+  int last_pos = -1;
+  while (left <= right) {
+    int mid = left + (right - left) / 2;
+    size_t mid_offset = get_offset_at(mid);
+    std::string mid_key = get_key_at(mid_offset);
+    int direction = predicate(mid_key);
+    if (direction < 0) { 
+      right = mid - 1;
+    } else if (direction > 0) {
+      left = mid + 1;
+    } else {
+      last_pos = mid;
+      left = mid + 1;
+    }
+  }
+  auto begin_ptr =
+      std::make_shared<BlockIterator>(shared_from_this(), first_pos);
+  auto end_ptr =
+      std::make_shared<BlockIterator>(shared_from_this(), last_pos + 1);
+  return std::make_optional<std::pair<std::shared_ptr<BlockIterator>,std::shared_ptr<BlockIterator>>>(begin_ptr,end_ptr);
+
 }
 
 Block::Entry Block::get_entry_at(size_t offset) const {
