@@ -323,6 +323,9 @@ Block::get_monotony_predicate_iters(
   // std::function是c++11引入的通用多态函数封装器
   //它的核心能力是：脱离具体可调用实体的类型，仅通过函数签名提供统一的调用接口。
   // predicate接受const std::string为参数，返回int类型
+  if (offsets.empty()) {
+    return std::nullopt;
+  }
   // TODO: Lab 3.3 使用二分查找获取满足谓词的区间迭代器
   // TODO:这里先采用线性扫描实现正确性，后续可替换为二分优化
   // BlockIterator it = begin(tranc_id);
@@ -340,9 +343,11 @@ Block::get_monotony_predicate_iters(
   //   ++it;
   // }
   // auto end_ptr = std::make_shared<BlockIterator>(it);
-  if(offsets.empty()){
-    return std::nullopt;
-  }
+  // TODO:std::move()用法 :
+  // 本质是一个类型转换，不移动任何东西，只是把左值强制转换成右值引用
+  // TODO:为什么需要右值引用?(移动语义):c++11之前，对象传递只有拷贝，移动语义解决的问题:把对象A赋值给B,B即将销毁时，可以直接拿走A的资源，不需要拷贝
+  // return
+  // std::make_optional(std::pair(std::move(begin_ptr),std::move(end_ptr)));
   // TODO:二分方法
   int left = 0, right = offsets.size() - 1;
   int first_pos = -1;
@@ -371,7 +376,7 @@ Block::get_monotony_predicate_iters(
     size_t mid_offset = get_offset_at(mid);
     std::string mid_key = get_key_at(mid_offset);
     int direction = predicate(mid_key);
-    if (direction < 0) { 
+    if (direction < 0) {
       right = mid - 1;
     } else if (direction > 0) {
       left = mid + 1;
@@ -381,11 +386,13 @@ Block::get_monotony_predicate_iters(
     }
   }
   auto begin_ptr =
-      std::make_shared<BlockIterator>(shared_from_this(), first_pos);
-  auto end_ptr =
-      std::make_shared<BlockIterator>(shared_from_this(), last_pos + 1);
-  return std::make_optional<std::pair<std::shared_ptr<BlockIterator>,std::shared_ptr<BlockIterator>>>(begin_ptr,end_ptr);
-
+      std::make_shared<BlockIterator>(shared_from_this(), first_pos, tranc_id);
+  auto end_ptr = std::make_shared<BlockIterator>(shared_from_this(),
+                                                 last_pos + 1, tranc_id);
+  return std::make_optional(
+      std::make_pair(std::move(begin_ptr), std::move(end_ptr)));
+  // return
+  // std::make_optional<std::pair<std::shared_ptr<BlockIterator>,std::shared_ptr<BlockIterator>>>(begin_ptr,end_ptr);
 }
 
 Block::Entry Block::get_entry_at(size_t offset) const {
