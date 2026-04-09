@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstring>
 #include <functional>
+#include <iostream>
 #include <stdexcept>
 #include <sys/types.h>
 
@@ -18,17 +19,17 @@ void BlockMeta::encode_meta_to_slice(std::vector<BlockMeta>& meta_entries,
     // ? 输入输出都由参数中的引用给定, 你不需要自己创建`vector`
     metadata.clear();
     //预分配内存，避免循环的时候频繁扩容
-    size_t total_size = 0;
-    if(meta_entries.empty()){
-        return ;
-    }
+    uint32_t num = meta_entries.size();
+    size_t total_size = num + 4; //加上末尾hash的4字节
     for (const auto& meta : meta_entries) {
         total_size += 4 + 2 + meta.first_key.size() + 2 + meta.last_key.size();
-        //Meta[i]所占的字节
+        // Meta[i]所占的字节
     }
-    metadata.reserve(total_size);
+    metadata.reserve(total_size); //预分配内存
 
-
+    for (int i = 0; i < 4; i++) {
+        metadata.push_back((num >> (i * 8)) & 0XFF);
+    }
     for (const auto& meta : meta_entries) {
         //存offset部分，占4B
         uint32_t offset = meta.offset;
@@ -50,6 +51,10 @@ void BlockMeta::encode_meta_to_slice(std::vector<BlockMeta>& meta_entries,
         metadata.push_back((last_keylen >> 8) & 0xFF);
         metadata.insert(metadata.end(), meta.last_key.begin(), meta.last_key.end());
     }
+    uint32_t hash_v = 0;
+    for (int i = 0; i < 4; i++) {
+        metadata.push_back((hash_v >> (i * 8)) & 0XFF);
+    }
 }
 
 std::vector<BlockMeta> BlockMeta::decode_meta_from_slice(const std::vector<uint8_t>& metadata) {
@@ -57,6 +62,9 @@ std::vector<BlockMeta> BlockMeta::decode_meta_from_slice(const std::vector<uint8
     std::vector<BlockMeta> result;
     size_t pos = 0;
     const size_t total_size = metadata.size();
+    if (total_size < 8) { // 一个合法的Blockmeta至少有8B数据
+        throw std::runtime_error("Invalid meta");
+    }
     //用lambda函数实现数据的读取
     auto read_uint16 = [&]() -> uint16_t { //读2B数据
         if (pos + 2 > total_size) {
@@ -86,9 +94,25 @@ std::vector<BlockMeta> BlockMeta::decode_meta_from_slice(const std::vector<uint8
         pos += len;
         return key;
     };
-    while (pos < total_size) {
+    size_t num = read_uint32();
+    size_t cnt_meta = 0;
+    //末尾4B是hash,但是可能会有损坏的数据,不能依赖pos+4来判断
+    // while (pos + 4 < total_size) {
+    //     BlockMeta meta;
+    //     //解析offset(4B)
+    //     meta.offset = read_uint32();
+
+    //     uint16_t first_keylen = read_uint16();
+    //     meta.first_key = read_string(first_keylen);
+
+    //     uint16_t last_keylen = read_uint16();
+    //     meta.last_key = read_string(last_keylen);
+
+    //     result.push_back(std::move(meta));
+    //     cnt_meta++;
+    // }
+    for (int i = 0; i < num; i++) { //读取num个meta
         BlockMeta meta;
-        //解析offset(4B)
         meta.offset = read_uint32();
 
         uint16_t first_keylen = read_uint16();
@@ -96,8 +120,22 @@ std::vector<BlockMeta> BlockMeta::decode_meta_from_slice(const std::vector<uint8
 
         uint16_t last_keylen = read_uint16();
         meta.last_key = read_string(last_keylen);
-
         result.push_back(std::move(meta));
+        cnt_meta++;
+    }
+
+    if (cnt_meta != num) {
+        throw std::runtime_error("Invalid metadata: parsed count does not match declared num");
+    }
+    // debug
+    // std::cout << "Debug: Total size = " << total_size << ", Final pos = " << pos
+    //           << ", Remaining bytes = " << (total_size - pos) << std::endl;
+    if (pos + 4 != total_size) {
+        throw std::runtime_error("Invalid hashval");
+    }
+    uint32_t stored_hash = 0;
+    for (int i = 0; i < 4; ++i) {
+        stored_hash |= static_cast<uint32_t>(metadata[pos + i] << (i * 8));
     }
     return result;
 }
