@@ -5,6 +5,7 @@
 #include <functional>
 #include <iostream>
 #include <stdexcept>
+#include <string_view>
 #include <sys/types.h>
 
 namespace tiny_lsm {
@@ -20,7 +21,9 @@ void BlockMeta::encode_meta_to_slice(std::vector<BlockMeta>& meta_entries,
     metadata.clear();
     //预分配内存，避免循环的时候频繁扩容
     uint32_t num = meta_entries.size();
-    size_t total_size = num + 4; //加上末尾hash的4字节
+    //这个实现有误，num表示元素的个数，但是所占的字节只是4B,无论有多少数据都是如此
+    // size_t total_size = num + 4; //加上末尾hash的4字节
+    size_t total_size = sizeof(uint32_t) + sizeof(uint32_t);
     for (const auto& meta : meta_entries) {
         total_size += 4 + 2 + meta.first_key.size() + 2 + meta.last_key.size();
         // Meta[i]所占的字节
@@ -51,9 +54,12 @@ void BlockMeta::encode_meta_to_slice(std::vector<BlockMeta>& meta_entries,
         metadata.push_back((last_keylen >> 8) & 0xFF);
         metadata.insert(metadata.end(), meta.last_key.begin(), meta.last_key.end());
     }
-    uint32_t hash_v = 0;
+    auto data_start = metadata.data();
+    size_t data_len = total_size - sizeof(uint32_t);
+    uint32_t hash_v = static_cast<uint32_t>(std::hash<std::string_view>{}(
+        std::string_view(reinterpret_cast<const char*>(data_start), data_len)));
     for (int i = 0; i < 4; i++) {
-        metadata.push_back((hash_v >> (i * 8)) & 0XFF);
+        metadata.push_back((hash_v >> (i * 8)) & 0xFF);
     }
 }
 
@@ -71,7 +77,7 @@ std::vector<BlockMeta> BlockMeta::decode_meta_from_slice(const std::vector<uint8
             throw std::runtime_error("Invalid metadata: unexpected end while reading key length");
         }
         uint16_t val =
-            static_cast<uint16_t>(metadata[pos]) | static_cast<uint16_t>(metadata[pos + 1] << 8);
+            static_cast<uint16_t>(metadata[pos]) | (static_cast<uint16_t>(metadata[pos + 1]) << 8);
         pos += 2;
         return val;
     };
@@ -81,7 +87,9 @@ std::vector<BlockMeta> BlockMeta::decode_meta_from_slice(const std::vector<uint8
         }
         uint32_t val = 0;
         for (int i = 0; i < 4; ++i) {
-            val |= static_cast<uint32_t>(metadata[pos + i] << (i * 8));
+            val |= (static_cast<uint32_t>(metadata[pos + i]) << (i * 8)); //正确做法，先转换再移位
+            // val |= static_cast<uint32_t>(metadata[pos + i] << (i *8));
+            //这种做法不对，metadata[pos+i]是uint8_t类型,左移运算会发生整数提升,隐式转换成有符号的int
         }
         pos += 4;
         return val;
@@ -135,7 +143,14 @@ std::vector<BlockMeta> BlockMeta::decode_meta_from_slice(const std::vector<uint8
     }
     uint32_t stored_hash = 0;
     for (int i = 0; i < 4; ++i) {
-        stored_hash |= static_cast<uint32_t>(metadata[pos + i] << (i * 8));
+        stored_hash |= (static_cast<uint32_t>(metadata[pos + i]) << (i * 8));
+    }
+    const uint8_t* data_start = metadata.data();
+    size_t data_len = total_size - 4;
+    uint32_t computed_hash = static_cast<uint32_t>(std::hash<std::string_view>{}(
+        std::string_view(reinterpret_cast<const char*>(data_start), data_len)));
+    if (computed_hash != stored_hash) {
+        throw std::runtime_error("Invalid metadata: Hash mismatch (data corrupted)");
     }
     return result;
 }
