@@ -22,9 +22,9 @@ struct SkipListNode {
   std::string value_; // 节点存储的值
   uint64_t tranc_id_; // 事务 id
   std::vector<std::shared_ptr<SkipListNode>>
-      forward_; // 指向不同层级的下一个节点的指针数组
+      forward_; // 同一节点指向不同层级的后缀节点的指针数组
   std::vector<std::weak_ptr<SkipListNode>>
-      backward_; // 指向不同层级的下一个节点的指针数组
+      backward_; // 同一节点指向不同层级的前驱节点的指针数组
   SkipListNode(const std::string &k, const std::string &v, int level,
                uint64_t tranc_id)
       : key_(k), value_(v), forward_(level, nullptr),
@@ -73,6 +73,8 @@ public:
   // 空迭代器构造函数
   SkipListIterator() : current(nullptr), lock(nullptr) {}
 
+  //TODO:override(重写),BaseIterator的子类SkipListIterator提供具体实现
+
   virtual BaseIterator &operator++() override;
   virtual bool operator==(const BaseIterator &other) const override;
   virtual bool operator!=(const BaseIterator &other) const override;
@@ -85,7 +87,7 @@ public:
   uint64_t get_tranc_id() const override;
 
 private:
-  std::shared_ptr<SkipListNode> current;
+  std::shared_ptr<SkipListNode> current; //迭代器当前指向哪个节点,SkipListIterator核心成员.
   std::shared_ptr<std::shared_lock<std::shared_mutex>>
       lock; // 持有读锁, 整个迭代器有效期间都持有读锁
 };

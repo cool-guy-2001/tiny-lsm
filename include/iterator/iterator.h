@@ -9,7 +9,7 @@
 
 namespace tiny_lsm {
 
-enum class IteratorType {
+enum class IteratorType { //枚举类型，用来区分SkipList,LSM,levelIterator...
   SkipListIterator,
   MemTableIterator,
   SstIterator,
@@ -28,7 +28,7 @@ public:
   virtual BaseIterator &operator++() = 0;
   virtual bool operator==(const BaseIterator &other) const = 0;
   virtual bool operator!=(const BaseIterator &other) const = 0;
-  virtual value_type operator*() const = 0;
+  virtual value_type operator*() const = 0;//解引用,得到pair<std::string,std::string>类型
   virtual IteratorType get_type() const = 0;
   virtual uint64_t get_tranc_id() const = 0;
   virtual bool is_end() const = 0;

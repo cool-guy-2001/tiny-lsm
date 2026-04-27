@@ -68,13 +68,13 @@ public:
   std::optional<std::pair<HeapIterator, HeapIterator>>
   iters_monotony_predicate(uint64_t tranc_id,
                            std::function<int(const std::string &)> predicate);
-
+  //传入单调谓词,返回一个optional的[beging,end)迭代器对
   HeapIterator end();
 
 private:
-  std::shared_ptr<SkipList> current_table;
-  std::list<std::shared_ptr<SkipList>> frozen_tables;
-  size_t frozen_bytes;
+  std::shared_ptr<SkipList> current_table;//唯一可写的活跃跳表
+  std::list<std::shared_ptr<SkipList>> frozen_tables;//只读，冻结的多个跳表
+  size_t frozen_bytes;//冻结区总字节数统计
   std::shared_mutex frozen_mtx; // 冻结表的锁
   std::shared_mutex cur_mtx;    // 活跃表的锁
 };
