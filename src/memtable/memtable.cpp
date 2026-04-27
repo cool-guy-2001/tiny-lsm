@@ -325,7 +325,7 @@ HeapIterator MemTable::iters_preffix(const std::string& preffix, uint64_t tranc_
     auto has_prefix = [](const std::string& s, const std::string& pre) -> bool {
         return s.rfind(pre, 0) == 0;
     };
-
+  
     for (auto it = frozen_tables.rbegin(); it != frozen_tables.rend(); ++it) {
         auto& p = *it;
         auto it1 = p->begin_preffix(preffix);
