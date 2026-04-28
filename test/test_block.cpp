@@ -412,7 +412,6 @@ TEST_F(BlockTest, TrancPredicateTest) {
                                        "value6"};
   EXPECT_EQ(results, expected);
 }
-
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   init_spdlog_file();
