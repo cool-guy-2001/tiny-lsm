@@ -333,8 +333,10 @@ Block::iters_preffix(uint64_t tranc_id, const std::string& preffix) {
     // TODO: Lab 3.3 获取前缀匹配的区间迭代器
     // ? 将前缀匹配转化为单调谓词, 调用 get_monotony_predicate_iters
     // ? 谓词: -key.compare(0, preffix.size(), preffix)
-
-    return std::nullopt;
+    return get_monotony_predicate_iters(
+        tranc_id, [&preffix](const std::string& key) {
+            return -key.compare(0, preffix.size(), preffix);
+        });
 }
 
 // 返回第一个满足谓词的位置和最后一个满足谓词的位置
@@ -352,7 +354,44 @@ Block::get_monotony_predicate_iters(uint64_t tranc_id,
     // ? 第一次二分: 找到 first (满足谓词的最左边索引)
     // ? 第二次二分: 找到 last  (满足谓词的最右边索引)
     // ? 返回 [BlockIterator(first), BlockIterator(last+1)]
-    return std::nullopt;
+    if (offsets.empty()) {
+        return std::nullopt;
+    }
+
+    size_t left = 0;
+    size_t right = offsets.size();
+    while (left < right) {
+        size_t mid = left + (right - left) / 2;
+        int pred = predicate(get_key_at(offsets[mid]));
+        if (pred > 0) {
+            left = mid + 1;
+        } else {
+            right = mid;
+        }
+    }
+
+    if (left == offsets.size() || predicate(get_key_at(offsets[left])) != 0) {
+        return std::nullopt;
+    }
+    size_t first = left;
+
+    left = first;
+    right = offsets.size();
+    while (left < right) {
+        size_t mid = left + (right - left) / 2;
+        int pred = predicate(get_key_at(offsets[mid]));
+        if (pred < 0) {
+            right = mid;
+        } else {
+            left = mid + 1;
+        }
+    }
+
+    auto begin_it =
+        std::make_shared<BlockIterator>(shared_from_this(), first, tranc_id);
+    auto end_it =
+        std::make_shared<BlockIterator>(shared_from_this(), left, tranc_id);
+    return std::make_pair(begin_it, end_it);
 }
 
 Block::Entry Block::get_entry_at(size_t offset) const {
@@ -377,14 +416,13 @@ bool Block::is_empty() const {
 
 BlockIterator Block::begin(uint64_t tranc_id) {
     // TODO: Lab 3.2 获取begin迭代器
-    // ? 返回指向第 0 个 entry 的迭代器: BlockIterator(shared_from_this(), 0, tranc_id)
-    
-    return BlockIterator(nullptr, 0, 0);
+    // ? 返回指向第 0 个 entry 的迭代器
+    return BlockIterator(shared_from_this(), 0, tranc_id);
 }
 
 BlockIterator Block::end() {
     // TODO: Lab 3.2 获取end迭代器
     // ? 返回指向末尾 (offsets.size()) 的迭代器
-    return BlockIterator(nullptr, 0, 0);
+    return BlockIterator(shared_from_this(), offsets.size(), 0);
 }
 } // namespace tiny_lsm
