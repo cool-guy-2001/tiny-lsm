@@ -1,8 +1,12 @@
 #include "sst/sst_iterator.h"
+#include "block/block_iterator.h"
 #include "sst/sst.h"
 #include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <optional>
 #include <stdexcept>
+#include <utility>
 
 namespace tiny_lsm {
 
@@ -13,41 +17,114 @@ namespace tiny_lsm {
 std::optional<std::pair<SstIterator, SstIterator>>
 sst_iters_monotony_predicate(std::shared_ptr<SST> sst, uint64_t tranc_id,
                              std::function<int(const std::string&)> predicate) {
-    std::optional<SstIterator> final_begin = std::nullopt;
-    std::optional<SstIterator> final_end = std::nullopt;
-    for (int block_idx = 0; block_idx < sst->meta_entries.size(); block_idx++) {
-        auto block = sst->read_block(block_idx);
-
-        BlockMeta& meta_i = sst->meta_entries[block_idx];
-        if (predicate(meta_i.first_key) < 0) {
-            break;
-        }
-        if (predicate(meta_i.last_key) > 0) {
-            continue;
-        }
-
-        auto result_i = block->get_monotony_predicate_iters(tranc_id, predicate);
-        if (result_i.has_value()) {
-            auto [i_begin, i_end] = result_i.value();
-            if (!final_begin.has_value()) {
-                auto tmp_it = SstIterator(sst, tranc_id);
-                tmp_it.set_block_idx(block_idx);
-                tmp_it.set_block_it(i_begin);
-                final_begin = tmp_it;
-            }
-            auto tmp_it = SstIterator(sst, tranc_id);
-            tmp_it.set_block_idx(block_idx);
-            tmp_it.set_block_it(i_end);
-            if (tmp_it.is_end() && tmp_it.m_block_idx == sst->num_blocks()) {
-                tmp_it.set_block_it(nullptr);
-            }
-            final_end = tmp_it;
-        }
-    }
-    if (!final_begin.has_value() || !final_end.has_value()) {
+    if (!sst || sst->meta_entries.empty()) {
         return std::nullopt;
     }
-    return std::make_pair(final_begin.value(), final_end.value());
+    const auto& metas = sst->meta_entries;
+    const size_t block_count = metas.size();
+    /*
+     * 构造一个指向指定 BlockIterator 的 SstIterator。
+     *
+     * block_idx 表示当前位于 SST 中的第几个 Block；
+     * block_it 表示在这个 Block 内部的位置。
+     */
+    auto make_sst_iterator = [&](size_t block_idx, const std::shared_ptr<BlockIterator>& block_it) {
+        SstIterator it(sst, tranc_id);
+        it.set_block_idx(static_cast<int64_t>(block_idx));
+        it.set_block_it(block_it);
+        /*
+         * 如果 BlockIterator 已经越过 SST 的最后一个 Block，
+         * 把内部 BlockIterator 规范化为空指针，表示 SST end。
+         */
+        if (it.is_end() && it.m_block_idx == static_cast<int64_t>(sst->num_blocks())) {
+            it.set_block_it(nullptr);
+        }
+        return it;
+    };
+    // ------------------------------------------------------------
+    // 1. 二分查找第一个“不完全位于目标范围左侧”的 Block
+    //
+    // 如果 predicate(last_key) > 0，
+    // 说明该 Block 中最大的 key 仍然太小，需要向右查找。
+    // ------------------------------------------------------------
+    size_t left = 0;
+    size_t right = block_count;
+    while (left < right) {
+        size_t mid = left + (right - left) / 2;
+        if (predicate(metas[mid].last_key) > 0) {
+            left = mid + 1;
+        } else {
+            right = mid;
+        }
+    }
+    const size_t first_candidate = left;
+    if (first_candidate == block_count) {
+        return std::nullopt;
+    }
+    // ------------------------------------------------------------
+    // 2. 二分查找第一个“完全位于目标范围右侧”的 Block
+    //
+    // 如果 predicate(first_key) < 0，
+    // 说明该 Block 中最小的 key 已经太大。
+    //
+    // 最终候选区间是：
+    // [first_candidate, candidate_end)
+    // ------------------------------------------------------------
+    left = first_candidate;
+    right = block_count;
+    while (left < right) {
+        size_t mid = left + (right - left) / 2;
+        if (predicate(metas[mid].first_key) < 0) {
+            right = mid;
+        } else {
+            left = mid + 1;
+        }
+    }
+    const size_t candidate_end = left;
+    if (first_candidate >= candidate_end) {
+        return std::nullopt;
+    }
+    std::optional<SstIterator> final_begin;
+    size_t first_match_idx = block_count;
+    // 保存第一个匹配 Block 中的区间终点。
+    // 如果它也是最后一个匹配 Block，就不必再次查询。
+    std::shared_ptr<BlockIterator> first_match_end;
+
+    for (size_t block_idx = first_candidate; block_idx < candidate_end; ++block_idx) {
+        auto block = sst->read_block(static_cast<int64_t>(block_idx));
+        auto result = block->get_monotony_predicate_iters(tranc_id, predicate);
+        if (!result.has_value()) {
+            continue;
+        }
+        const auto& [block_begin, block_end] = *result;
+        final_begin = make_sst_iterator(block_idx, block_begin);
+        first_match_idx = block_idx;
+        first_match_end = block_end;
+        break;
+    }
+    if (!final_begin.has_value()) {
+        return std::nullopt;
+    }
+    std::optional<SstIterator> final_end;
+    for (size_t block_idx = candidate_end; block_idx > first_match_idx;) {
+        --block_idx;
+        if (block_idx == first_match_idx) {
+            final_end = make_sst_iterator(block_idx, first_match_end);
+            break;
+        }
+        auto block = sst->read_block(static_cast<int64_t>(block_idx));
+        auto result = block->get_monotony_predicate_iters(tranc_id, predicate);
+        if (!result.has_value()) {
+            continue;
+        }
+        const auto& [block_begin, block_end] = *result;
+        final_end = make_sst_iterator(block_idx, block_end);
+        break;
+    }
+    if (!final_end.has_value()) {
+        return std::nullopt;
+    }
+    return std::pair<SstIterator, SstIterator>{std::move(*final_begin), std::move(*final_end)};
 }
 
 SstIterator::SstIterator(std::shared_ptr<SST> sst, uint64_t tranc_id, bool keep_all_versions)
